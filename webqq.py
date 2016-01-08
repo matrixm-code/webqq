@@ -24,35 +24,99 @@ class WebQQ(object):
     def __init__(self,handler=None):
         self.handler = None
         self.uin = ""
-        self.ptwebqq = "586b50666f0b9c8f1a6ec812e7caa1e7fa012a890b1879a785700b6377c0eb51"
-        self.hash = "505C0B6706D55486"
-        self.psessionid = "8368046764001d636f6e6e7365727665725f77656271714031302e3133332e34312e383400001ad00000066b026e040015808a206d0000000a406172314338344a69526d0000002859185d94e66218548d1ecb1a12513c86126b3afb97a3c2955b1070324790733ddb059ab166de6857"
-        self.vfwebqq = "0aba6c04f97f36b391aff85812d59c2bfaf053ddfad9c102b99caec3b6d57adfc70ab03b0d5ccede"
+        self.ptwebqq = ""
+        self.hash = ""
+        self.psessionid = ""
+        self.vfwebqq = ""
         self.clientid = 53999199
-        # self.cookiefile = "C:/Users/FeiYinN/Desktop/cookies.txt"
-        # self.cookiejar = cookielib.MozillaCookieJar().load(self.cookiefile,ignore_discard=True,ignore_expires=True)
+        self.appid = 501004106
+        self.cookie = cookielib.CookieJar()
+        self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookie))
         self.friends = {}
         self.groups = {}
         self.header = {
-        "User-Agent":"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:43.0) Gecko/20100101 Firefox/43.0",
-        "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":"zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3",
-        #"Accept-Encoding":"gzip, deflate", 加上这个就会导致在有时返回的结果是乱码问题
-        "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-        "Cookie":"pgv_pvid=6951714243; ptui_loginuin=421829325; pt2gguin=o0421829325; RK=oPFeGmRyW1; ptcz=f597d32c39fe103f2e09f62992c24012b0f25e1db90b736d98c82e2a947176a4; ts_refer=www.baidu.com/link; ts_uid=9377103228; o_cookie=421829325; pgv_info=ssid=s1856092840; ts_last=web2.qq.com/; pt_clientip=bb2a0a821c3b1fef; pt_serverip=b0bd0a8259676e2c; ptisp=ctc; uin=o0421829325; skey=@Oszrw3mRo; ptwebqq=586b50666f0b9c8f1a6ec812e7caa1e7fa012a890b1879a785700b6377c0eb51; p_uin=o0421829325; p_skey=Zw0FUhimNO5wZ6EwjfXwbigbRndWoP3YxbBtZjW6AqU_; pt4_token=oNLaBsa1uxH9Gv5zuqRmchQrF4sS40BzibNUpADx420_",
-        "Referer":"",
-        "Connection":"keep-alive"
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:43.0) Gecko/20100101 Firefox/43.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Referer": "",
+            "Connection": "keep-alive"
         }
 
-    def send_post(self,url,post=None,header=None,timeout=60):
-        request = urllib2.Request(url,data=post,headers=header)
-        # opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookiejar))
-        # response = opener.open(request)
-        response = urllib2.urlopen(request,timeout=timeout)
+    def login(self):
+        get_barcode_url = "https://ssl.ptlogin2.qq.com/ptqrshow?" \
+                          "appid=%s&e=0&l=M&s=5&d=72&v=4&t=0.2598575626239805" % self.appid
+        request = urllib2.Request(get_barcode_url, headers=self.header)
+        response = self.opener.open(request)
+        with open('barcode.png', 'wb') as f:
+            f.write(response.read())
+            f.close()
+
+    def login2(self):
+        # 为了通过扫描二维码获取登陆信息和 cookie里面的ptwebqq
+        retcode = "66"
+        headers = self.header
+        headers["Referer"] = " http://s.web2.qq.com/proxy.html?v=20130916001&callback=1&id=1"
+        while retcode != "0":
+            login_url = "https://ssl.ptlogin2.qq.com/ptqrlogin?" \
+                        "webqq_type=10&remember_uin=1&login2qq=1&aid={}&" \
+                        "u1=http%3A%2F%2Fw.qq.com%2Fproxy.html%3Flogin2qq%3D1%26webqq_type%3D10&ptredirect=0&" \
+                        "ptlang=2052&daid=164&from_ui=1&pttype=1&dumy=&fp=loginerroralert&" \
+                        "action=0-0-67397&mibao_css=m_webqq&t=1&g=1&js_type=0&js_ver=10145&login_sig=&pt_randsalt=0".format(self.appid)
+            request2 = urllib2.Request(login_url, headers=self.header)
+            response2 = self.opener.open(request2)
+            retcode, _, _, _, tip, nickname = eval(response2.read()[6:-3])
+            print tip
+            time.sleep(1)
+        for item in self.cookie:
+            if item.name == "ptwebqq":
+                self.ptwebqq = item.value
+        print self.cookie
+        print self.ptwebqq
+        print type(self.ptwebqq)
+        get_vfwebqq_url ="http://s.web2.qq.com/api/getvfwebqq?" \
+                             "ptwebqq={}&" \
+                             "clientid={}&" \
+                             "psessionid=&t={}".format(self.ptwebqq, self.clientid,int(time.time()*1000))
+        print get_vfwebqq_url
+        request3 = urllib2.Request(get_vfwebqq_url, headers=headers)
+        response3 = self.opener.open(request3)
+        print response3.read()
+
+    def login3(self):
+        # 通过login2中得到的cookie  来获取psessionid和 vfwebqq
+        headers = self.header
+        headers["Referer"] = "http://d1.web2.qq.com/proxy.html?v=20151105001&callback=1&id=2"
+        login3_url = "http://d1.web2.qq.com/channel/login2"
+        post = {
+            "ptwebqq": self.ptwebqq,
+            "clientid": self.clientid,
+            "psessionid": "",
+            "status": "online",
+        }
+        postdata = "r={}".format(self.encode(post))
+        request3 = urllib2.Request(login3_url,data=postdata, headers=headers)
+        response3 = self.opener.open(request3)
+        print postdata
+        #return_data = self.send_post(login3_url, postdata, headers)
+        print response3.read()
+        # print return_data['result']['vfwebqq']
+        # if return_data['retcode'] == 0:
+        #     self.psessionid = return_data['result']['psessionid']
+        #     self.vfwebqq = return_data['result']['vfwebqq']
+        # else:
+        #     raise WebQQException("get psessionid vfwebqq faild!!!!")
+        # print self.psessionid
+        # print self.vfwebqq
+
+    def send_post(self, url, post=None, header=None, timeout=60):
+        request = urllib2.Request(url, data=post, headers=header)
+        response = self.opener.open(request)
+        #response = urllib2.urlopen(request)
         return json.loads(response.read())
 
-    def encode(self,code):
-        return  urllib.quote(json.dumps(code))
+    def encode(self, code):
+        return urllib.quote(json.dumps(code))
 
     def get_friends_list(self):
         return self.friends
@@ -65,7 +129,7 @@ class WebQQ(object):
         headers["Referer"] = "http://s.web2.qq.com/proxy.html?v=20130916001&callback=1&id=1"
         url = "http://s.web2.qq.com/api/get_user_friends2"
         post = {
-            "vfwebqq":self.vfwebqq,
+            "vfwebqq": self.vfwebqq,
             "hash": self.hash
         }
         postdata = "r={}".format(self.encode(post))
@@ -230,7 +294,7 @@ class GetSendList(object):
         return n
 
 if __name__ == '__main__':
-    # qq = WebQQ()
+    qq = WebQQ()
     # qq.get_groups()
     # qq.get_user_friends()
     # qq.send_message(276949696, 'ok')
@@ -240,9 +304,13 @@ if __name__ == '__main__':
     #         qq.polls()
     #     except socket.timeout :
     #         print "time out"
-
-    a = SendMessageAPI()
-    a.start()
-
     # a = GetSendList()
     # print a.change_status(31492,2)
+    # a = SendMessageAPI()
+    # a.start()
+
+    qq.login()
+    qq.login2()
+    qq.login3()
+
+
