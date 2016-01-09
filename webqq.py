@@ -21,7 +21,7 @@ class WebQQ(object):
     vfwebqq
     clientid  -这个值不知道是不是可以任意, 不过目前来说确定下来就不能变
     """
-    def __init__(self,handler=None):
+    def __init__(self, handler=None):
         self.handler = None
         self.uin = ""
         self.ptwebqq = ""
@@ -65,26 +65,24 @@ class WebQQ(object):
                         "action=0-0-67397&mibao_css=m_webqq&t=1&g=1&js_type=0&js_ver=10145&login_sig=&pt_randsalt=0".format(self.appid)
             request2 = urllib2.Request(login_url, headers=self.header)
             response2 = self.opener.open(request2)
-            retcode, _, _, _, tip, nickname = eval(response2.read()[6:-3])
+            retcode, _, other_url, _, tip, nickname = eval(response2.read()[6:-3])
             print tip
             time.sleep(1)
         for item in self.cookie:
             if item.name == "ptwebqq":
                 self.ptwebqq = item.value
-        print self.cookie
-        print self.ptwebqq
-        print type(self.ptwebqq)
+        # 从这里开始有些乱, 因为下面要访问两个网页 目的只是为了获取cookie  不然后面的页面访问会出错.
         get_vfwebqq_url ="http://s.web2.qq.com/api/getvfwebqq?" \
                              "ptwebqq={}&" \
                              "clientid={}&" \
-                             "psessionid=&t={}".format(self.ptwebqq, self.clientid,int(time.time()*1000))
-        print get_vfwebqq_url
-        request3 = urllib2.Request(get_vfwebqq_url, headers=headers)
+                             "psessionid=&t={}".format(self.ptwebqq, self.clientid, int(time.time()*1000))
+        request3 = urllib2.Request(other_url, headers=headers)
         response3 = self.opener.open(request3)
-        print response3.read()
+        response3 = self.send_post(get_vfwebqq_url,header=headers)
+        self.vfwebqq = response3['result']['vfwebqq']       # 这里获得了vfwebqq
 
     def login3(self):
-        # 通过login2中得到的cookie  来获取psessionid和 vfwebqq
+        # 通过login2中得到的cookie  来获取psessionid
         headers = self.header
         headers["Referer"] = "http://d1.web2.qq.com/proxy.html?v=20151105001&callback=1&id=2"
         login3_url = "http://d1.web2.qq.com/channel/login2"
@@ -94,25 +92,47 @@ class WebQQ(object):
             "psessionid": "",
             "status": "online",
         }
+        print post
         postdata = "r={}".format(self.encode(post))
-        request3 = urllib2.Request(login3_url,data=postdata, headers=headers)
-        response3 = self.opener.open(request3)
-        print postdata
-        #return_data = self.send_post(login3_url, postdata, headers)
-        print response3.read()
-        # print return_data['result']['vfwebqq']
-        # if return_data['retcode'] == 0:
-        #     self.psessionid = return_data['result']['psessionid']
-        #     self.vfwebqq = return_data['result']['vfwebqq']
-        # else:
-        #     raise WebQQException("get psessionid vfwebqq faild!!!!")
-        # print self.psessionid
-        # print self.vfwebqq
+        return_data = self.send_post(login3_url, postdata, headers)
+        if return_data['retcode'] == 0:
+            self.psessionid = return_data['result']['psessionid']
+            # self.vfwebqq = str(return_data['result']['vfwebqq'])
+            self.uin = return_data['result']['uin']
+            self.hash = self._gethash(self.uin, self.ptwebqq)
+        else:
+            raise WebQQException("get psessionid vfwebqq faild!!!!")
+
+    def _gethash(self, x, k):
+        N = [0, 0, 0, 0]
+        V = [0, 0, 0, 0]
+        U = [0, 0, 0, 0, 0, 0, 0, 0]
+        x = int(x)
+        v =''
+        n = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
+        for T in range(len(k)):
+            N[T % 4] ^= ord(k[T])
+
+        V[0] = int(x >> 24 & 255 ^ 69)
+        V[1] = int(x >> 16 & 255 ^ 67)
+        V[2] = int(x >> 8 & 255 ^ 79)
+        V[3] = int(x & 255 ^ 75)
+
+        for T in range(8):
+            if T % 2 == 0:
+                U[T] = N[T >> 1]
+            else:
+                U[T] = V[T >> 1]
+
+        for T in range(len(U)):
+            v += n[U[T] >> 4 & 15]
+            v += n[U[T] & 15]
+        return v
 
     def send_post(self, url, post=None, header=None, timeout=60):
         request = urllib2.Request(url, data=post, headers=header)
         response = self.opener.open(request)
-        #response = urllib2.urlopen(request)
+        # response = urllib2.urlopen(request)
         return json.loads(response.read())
 
     def encode(self, code):
@@ -133,9 +153,9 @@ class WebQQ(object):
             "hash": self.hash
         }
         postdata = "r={}".format(self.encode(post))
-        friends_list = self.send_post(url,postdata,headers)
+        print self.cookie
+        friends_list = self.send_post(url, postdata, headers)
         # print friends_list["result"]["info"][1]["uin"]
-
         if friends_list["retcode"] != 0:
             raise WebQQException("get_friends faild!!!!")
 
@@ -143,7 +163,7 @@ class WebQQ(object):
              friend_json = self.send_post("http://s.web2.qq.com/api/get_friend_uin2?"\
                                "tuin={}&type=1&"\
                                "vfwebqq={}&"\
-                               "t=1451899846020".format(i['uin'],self.vfwebqq),header=headers)
+                               "t=1451899846020".format(i['uin'], self.vfwebqq), header=headers)
              self.friends[friend_json['result']['account']] = friend_json['result']['uin']
              time.sleep(0.01)
         # print self.friends
@@ -158,7 +178,7 @@ class WebQQ(object):
             "hash": self.hash
         }
         postdata = "r={}".format(self.encode(post))
-        group_list = self.send_post(url,postdata,headers)
+        group_list = self.send_post(url, postdata, headers)
 
         if group_list["retcode"] != 0:
             raise WebQQException("get_groups faild!!!!")
@@ -260,16 +280,6 @@ class SendMessageAPI(object):
             gevent.spawn(self.send),
         ])
 
-    # def send_to_groups(self, gid_list, content):                        # 这里暂时用for循环  考虑可以用线程
-    #     for gid in gid_list:
-    #         if self.send_group_message(gid, content) != 0:
-    #             print "send to group:%s 's message failed!!!!" % gid  # 这里可以记录成日志 或者改变一下flage
-    #
-    # def send_to_friends(self, uin_list, content):
-    #     for fid in uin_list:
-    #         if self.send_message(fid, content) != 0:
-    #             print "send to friend:%s 's message failed!!!" % uin_list  # 这里可以记录成日志
-
     def get_friend_list(self):
         pass
 
@@ -295,9 +305,12 @@ class GetSendList(object):
 
 if __name__ == '__main__':
     qq = WebQQ()
-    # qq.get_groups()
-    # qq.get_user_friends()
-    # qq.send_message(276949696, 'ok')
+    qq.login()
+    qq.login2()
+    qq.login3()
+    #qq.get_groups()
+    qq.get_user_friends()
+    qq.send_message(276949696, 'ok')
     # qq.send_group_message(19223042,"ok")
     # while True:
     #     try:
@@ -309,8 +322,5 @@ if __name__ == '__main__':
     # a = SendMessageAPI()
     # a.start()
 
-    qq.login()
-    qq.login2()
-    qq.login3()
 
 
