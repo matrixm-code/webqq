@@ -241,7 +241,7 @@ class SendMessageAPI(object):
         self.flage = True
         self.send_list = ()
         self.mq = Queue(maxsize=100)
-        self.gsl = GetSendList()
+        self.gsl = GetSqlOpreation()
         self.webqq = WebQQ()
         self.qqfriends = {}
         self.qqgroups = {}
@@ -270,7 +270,7 @@ class SendMessageAPI(object):
                         self.gsl.change_status(id, 2)
                     else:
                         self.gsl.change_status(id, 1)
-                elif flage == "group" and to in self.qqgroups:
+                elif flage == "group":
                     errCode = self.webqq.send_group_message(to, content)
                     if errCode["errCode"] != 0:
                         self.gsl.change_status(id, 2)
@@ -289,28 +289,41 @@ class SendMessageAPI(object):
             print self.webqq.polls()
             gevent.sleep(0.1)
 
+    def group_list_tosql(self):
+        errnum = 0
+        while self.flage:
+            try:
+                self.webqq.get_groups()
+                self.qqgroups = self.webqq.get_groups_list()
+                print "I got group list"
+                for gname, gid in self.qqgroups.items():
+                    self.gsl.update_group_id(gname, gid)
+                gevent.sleep(300)
+            except WebQQException:
+                if errnum < 3:
+                    errnum += 1
+                    continue
+                else:
+                    errnum = 0
+                    raise WebQQException("get_group Faill !!!!")
+
     def start(self):
         self.webqq.login()
         self.webqq.login2()
         self.webqq.login3()
         self.webqq.get_user_friends()
-        self.webqq.get_groups()
+        #self.webqq.get_groups()
         self.qqfriends = self.webqq.get_friends_list()
-        self.qqgroups = self.webqq.get_groups_list()
+        #self.qqgroups = self.webqq.get_groups_list()
         gevent.joinall([
+            gevent.spawn(self.group_list_tosql),
             gevent.spawn(self.putlist),
             gevent.spawn(self.send),
             gevent.spawn(self.pollmessage),
         ])
 
-    def get_friend_list(self):
-        pass
 
-    def get_group_list(self):
-        pass
-
-
-class GetSendList(object):
+class GetSqlOpreation(object):
     def __init__(self):
         self.conn = MySQLdb.connect(host='118.26.204.253', user='root', port=3306, db='lzx', passwd='LongHun@Game', charset='utf8')
         self.cursor = self.conn.cursor()
@@ -324,6 +337,15 @@ class GetSendList(object):
     def change_status(self, iId, num):
         sql = "update dzz_qq_assistant set iStatus=%s where iId=%s "
         n = self.cursor.execute(sql, (num, iId))
+        self.conn.commit()
+        return n
+
+    def update_group_id(self, gname, gid):
+        sql = "select * from dzz_qq_assistant_group where gname=%s"
+        sql2 = "insert into dzz_qq_assistant_group (gname,gid) values(%s,%s)"
+        n = self.cursor.execute(sql, gname)
+        if not n:
+            self.cursor.execute(sql2, (gname, gid))
         self.conn.commit()
         return n
 
@@ -343,7 +365,8 @@ if __name__ == '__main__':
     #         time.sleep(0.5)
     #     except socket.timeout:
     #         print "time out"
-    #a = GetSendList()
+    # a = GetSqlOpreation()
+    # a.update_group_id('我是谁', 12334456)
     a = SendMessageAPI()
     a.start()
 
