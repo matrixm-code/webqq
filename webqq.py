@@ -1,24 +1,21 @@
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
-import sys,os,time,random
+import sys, os, time, random
 import urllib2
 import urllib
 import cookielib
 import json
-import socket
 import MySQLdb
 import gevent
-from gevent.queue import Queue
+from gevent.queue import Queue, Empty
 
-class WebQQException(Exception):pass
+
+class WebQQException(Exception):
+    pass
+
 
 class WebQQ(object):
     """
-    目前每次登陆都要手动填写一些信息:
-    ptwebqq
-    hash
-    psessionid
-    vfwebqq
     clientid  -这个值不知道是不是可以任意, 不过目前来说确定下来就不能变
     """
     def __init__(self, handler=None):
@@ -78,7 +75,7 @@ class WebQQ(object):
                              "psessionid=&t={}".format(self.ptwebqq, self.clientid, int(time.time()*1000))
         request3 = urllib2.Request(other_url, headers=headers)
         response3 = self.opener.open(request3)
-        response3 = self.send_post(get_vfwebqq_url,header=headers)
+        response3 = self.send_post(get_vfwebqq_url, header=headers)
         self.vfwebqq = response3['result']['vfwebqq']       # 这里获得了vfwebqq
 
     def login3(self):
@@ -92,7 +89,6 @@ class WebQQ(object):
             "psessionid": "",
             "status": "online",
         }
-        print post
         postdata = "r={}".format(self.encode(post))
         return_data = self.send_post(login3_url, postdata, headers)
         if return_data['retcode'] == 0:
@@ -102,6 +98,13 @@ class WebQQ(object):
             self.hash = self._gethash(self.uin, self.ptwebqq)
         else:
             raise WebQQException("get psessionid vfwebqq faild!!!!")
+        # 实验  加的一个访问连接   结果表明,加了这个在poll的时候就会返回正确的值,不然导致返回retode:103
+        buddy_url = "http://d1.web2.qq.com/channel/get_online_buddies2?" \
+                    "vfwebqq={}&" \
+                    "clientid={}&" \
+                    "psessionid={}&" \
+                    "t=1452481618011".format(self.vfwebqq,self.clientid,self.psessionid)
+        response = self.send_post(buddy_url,header=headers)
 
     def _gethash(self, x, k):
         N = [0, 0, 0, 0]
@@ -132,7 +135,6 @@ class WebQQ(object):
     def send_post(self, url, post=None, header=None, timeout=60):
         request = urllib2.Request(url, data=post, headers=header)
         response = self.opener.open(request)
-        # response = urllib2.urlopen(request)
         return json.loads(response.read())
 
     def encode(self, code):
@@ -153,9 +155,7 @@ class WebQQ(object):
             "hash": self.hash
         }
         postdata = "r={}".format(self.encode(post))
-        print self.cookie
         friends_list = self.send_post(url, postdata, headers)
-        # print friends_list["result"]["info"][1]["uin"]
         if friends_list["retcode"] != 0:
             raise WebQQException("get_friends faild!!!!")
 
@@ -166,7 +166,6 @@ class WebQQ(object):
                                "t=1451899846020".format(i['uin'], self.vfwebqq), header=headers)
              self.friends[friend_json['result']['account']] = friend_json['result']['uin']
              time.sleep(0.01)
-        # print self.friends
         return self
 
     def get_groups(self):
@@ -194,7 +193,7 @@ class WebQQ(object):
         url = "http://d1.web2.qq.com/channel/send_buddy_msg2"
         post = {
             "to": friend_id,
-            "content": '[\"%s\",[\"font\",{\"name\":\"宋体\",\"size\":10,\"style\":[0,0,0],\"color\":\"000000\"}]]'%(message),
+            "content": '[\"%s\",[\"font\",{\"name\":\"宋体\",\"size\":10,\"style\":[0,0,0],\"color\":\"000000\"}]]'% message,
             "face": 540,
             "clientid": self.clientid,
             "msg_id": 90530032,      # 这个值是可以变的
@@ -202,10 +201,9 @@ class WebQQ(object):
             }
         postdata = "r={}".format(self.encode(post))
         response = self.send_post(url, postdata, headers)
-        # print response['errCode']
-        return response['errCode']
+        return response
 
-    def send_group_message(self,gid,message):
+    def send_group_message(self, gid, message):
         headers = self.header
         headers["Referer"] = "http://d1.web2.qq.com/proxy.html?v=20151105001&callback=1&id=2"
         url = "http://d1.web2.qq.com/channel/send_qun_msg2"
@@ -219,11 +217,10 @@ class WebQQ(object):
             }
         postdata = "r={}".format(self.encode(post))
         response = self.send_post(url, postdata, headers)
-        return response['errCode']
+        return response
 
 # polls是可以接收好友发来的信息的,
     def polls(self):
-        pass
         headers = self.header
         headers["Referer"] = "http://d1.web2.qq.com/proxy.html?v=20151105001&callback=1&id=2"
         url = "http://d1.web2.qq.com/channel/poll2"
@@ -235,7 +232,7 @@ class WebQQ(object):
             }
         postdata = "r={}".format(self.encode(post))
         request = self.send_post(url, postdata, headers, timeout=65)
-        # print request
+        return request
 
 
 class SendMessageAPI(object):
@@ -246,38 +243,64 @@ class SendMessageAPI(object):
         self.mq = Queue(maxsize=100)
         self.gsl = GetSendList()
         self.webqq = WebQQ()
-
+        self.qqfriends = {}
+        self.qqgroups = {}
 
     def putlist(self):
         while self.flage:
             sendlist = self.gsl.get_send_list()
+            print(sendlist)
             if sendlist:
                 for i in sendlist:
                     self.mq.put(i)      # 这里可以有try .. execpt
-                gevent.sleep(0.1)
-            time.sleep(60)
+            gevent.sleep(0.1)
+            time.sleep(10)
 
     def send(self):
         while self.flage:
-            message = self.mq.get(timeout=1)    # 这里可以有try .. execpt
-            id = message[0]
-            flage = message[1]
-            to = message[2]
-            content = message[3].encode('utf-8')
-            if flage == "person":
-                errCode = self.webqq.send_message(to, content)
-                if errCode != 0:
-                    self.gsl.change_status(id, 2)
+            try:
+                message = self.mq.get(timeout=1)    # 这里可以有try .. execpt
+                id = message[0]
+                flage = message[1]
+                to = message[2]
+                content = message[3].encode('utf-8')
+                if flage == "person" and to in self.qqfriends:
+                    errCode = self.webqq.send_message(to, content)
+                    if errCode["errCode"] != 0:
+                        self.gsl.change_status(id, 2)
+                    else:
+                        self.gsl.change_status(id, 1)
+                elif flage == "group" and to in self.qqgroups:
+                    errCode = self.webqq.send_group_message(to, content)
+                    if errCode["errCode"] != 0:
+                        self.gsl.change_status(id, 2)
+                    else:
+                        self.gsl.change_status(id, 1)
                 else:
-                    self.gsl.change_status(id, 1)
-            time.sleep(1)
+                    self.gsl.change_status(id, 4)
+                time.sleep(0.5)
+            except Empty:
+                gevent.sleep(0.1)
+            except KeyError, e:
+                self.gsl.change_status(id, 4)
+
+    def pollmessage(self):
+        while self.flage:
+            print self.webqq.polls()
+            gevent.sleep(0.1)
 
     def start(self):
+        self.webqq.login()
+        self.webqq.login2()
+        self.webqq.login3()
         self.webqq.get_user_friends()
         self.webqq.get_groups()
+        self.qqfriends = self.webqq.get_friends_list()
+        self.qqgroups = self.webqq.get_groups_list()
         gevent.joinall([
             gevent.spawn(self.putlist),
             gevent.spawn(self.send),
+            gevent.spawn(self.pollmessage),
         ])
 
     def get_friend_list(self):
@@ -295,6 +318,7 @@ class GetSendList(object):
     def get_send_list(self):
         sql = "select iId,sType,sTo,sContents from dzz_qq_assistant where iStatus=0"
         self.cursor.execute(sql)
+        self.conn.commit()           # 不加这个会出问题
         return self.cursor.fetchall()
 
     def change_status(self, iId, num):
@@ -304,23 +328,24 @@ class GetSendList(object):
         return n
 
 if __name__ == '__main__':
-    qq = WebQQ()
-    qq.login()
-    qq.login2()
-    qq.login3()
-    #qq.get_groups()
-    qq.get_user_friends()
-    qq.send_message(276949696, 'ok')
+    # qq = WebQQ()
+    # qq.login()
+    # qq.login2()
+    # qq.login3()
+    # qq.get_groups()
+    # qq.get_user_friends()
+    # qq.polls()
+    # qq.send_message(276949696, 'ok')
     # qq.send_group_message(19223042,"ok")
     # while True:
     #     try:
     #         qq.polls()
-    #     except socket.timeout :
+    #         time.sleep(0.5)
+    #     except socket.timeout:
     #         print "time out"
-    # a = GetSendList()
-    # print a.change_status(31492,2)
-    # a = SendMessageAPI()
-    # a.start()
+    #a = GetSendList()
+    a = SendMessageAPI()
+    a.start()
 
 
 
