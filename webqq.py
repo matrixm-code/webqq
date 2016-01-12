@@ -8,7 +8,7 @@ import json
 import MySQLdb
 import gevent
 from gevent.queue import Queue, Empty
-
+from config import dbhost, dbpasswd, dbport, dbuser, db, t_qq_assistant, t_qq_assistant_group
 
 class WebQQException(Exception):
     pass
@@ -253,8 +253,8 @@ class SendMessageAPI(object):
             if sendlist:
                 for i in sendlist:
                     self.mq.put(i)      # 这里可以有try .. execpt
-            gevent.sleep(0.1)
-            time.sleep(10)
+            gevent.sleep(10)
+            #time.sleep(10)
 
     def send(self):
         while self.flage:
@@ -298,7 +298,7 @@ class SendMessageAPI(object):
                 print "I got group list"
                 for gname, gid in self.qqgroups.items():
                     self.gsl.update_group_id(gname, gid)
-                gevent.sleep(300)
+                gevent.sleep(1800)
             except WebQQException:
                 if errnum < 3:
                     errnum += 1
@@ -325,24 +325,24 @@ class SendMessageAPI(object):
 
 class GetSqlOpreation(object):
     def __init__(self):
-        self.conn = MySQLdb.connect(host='118.26.204.253', user='root', port=3306, db='lzx', passwd='LongHun@Game', charset='utf8')
+        self.conn = MySQLdb.connect(host=dbhost, user=dbuser, port=dbport, db=db, passwd=dbpasswd, charset='utf8')
         self.cursor = self.conn.cursor()
 
     def get_send_list(self):
-        sql = "select iId,sType,sTo,sContents from dzz_qq_assistant where iStatus=0"
+        sql = "select iId,sType,sTo,sContents from {} where iStatus=0".format(t_qq_assistant)
         self.cursor.execute(sql)
         self.conn.commit()           # 不加这个会出问题
         return self.cursor.fetchall()
 
     def change_status(self, iId, num):
-        sql = "update dzz_qq_assistant set iStatus=%s where iId=%s "
+        sql = "update {} set iStatus=%s where iId=%s ".format(t_qq_assistant)
         n = self.cursor.execute(sql, (num, iId))
         self.conn.commit()
         return n
 
     def update_group_id(self, gname, gid):
-        sql = "select * from dzz_qq_assistant_group where gname=%s"
-        sql2 = "insert into dzz_qq_assistant_group (gname,gid) values(%s,%s)"
+        sql = "select * from {} where gname=%s".format(t_qq_assistant_group)
+        sql2 = "insert into {} (gname,gid) values(%s,%s)".format(t_qq_assistant_group)
         n = self.cursor.execute(sql, gname)
         if not n:
             self.cursor.execute(sql2, (gname, gid))
