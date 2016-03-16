@@ -36,10 +36,10 @@ import MySQLdb
 
 if __name__ == '__main__':
     # db = ClassDb()
-    # db.connect(host='118.26.204.253',user='root',port=3306,db='luoshen_360_S1001',passwd='LongHun@Game',charset='utf-8')
+    # db.connect(host='',user='root',port=3306,db='',passwd='',charset='utf-8')
     # db.execute('show tables')
     # db.fetchall()
-    connect = MySQLdb.connect(host='118.26.204.253',user='root',port=3306,passwd='LongHun@Game')
+    connect = MySQLdb.connect(host='',user='root',port=3306,passwd='')
     cursor = connect.cursor()
     cursor.execute('create database lzx')
     print cursor.fetchall()
